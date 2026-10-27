@@ -1,0 +1,11 @@
+# ============================================================================
+# dsh-memory-bridge —— DSH bundle patch
+# ============================================================================
+# 安装：
+#   dsh plugin --profile desktop add "link:C:\Users\user\Desktop\My Big Blue Fat Whale · Forever\dsh-plugin-memory-bridge"
+# 设置页：http://127.0.0.1:<DSH 端口>/dsh-memory/
+# ============================================================================
+
+- insert:
+    - id: dsh-memory-bridge
+      name: dsh-memory-bridge

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>记忆库 · 插件设置</title>
+<style>
+  :root { --bg:#0a0a0a; --panel:#121212; --line:rgba(255,255,255,.08); --text:#f4f1ea; --muted:#9a958c; --gold:#c6a76a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.7 -apple-system,"Microsoft YaHei UI",sans-serif; padding:32px; }
+  h1 { font:400 20px/1.4 Georgia,serif; margin:0 0 6px; }
+  p.sub { margin:0 0 22px; color:var(--muted); font-size:12.5px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  label.f { display:block; margin-bottom:12px; }
+  label.f span { display:block; color:var(--muted); font-size:12px; margin-bottom:6px; }
+  select, input { width:100%; padding:9px 11px; border-radius:10px; border:1px solid var(--line); background:#0d0d0d; color:var(--text); font-size:13px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button { padding:8px 16px; border-radius:10px; border:1px solid rgba(198,167,106,.45); background:rgba(198,167,106,.08); color:var(--gold); font-size:13px; cursor:pointer; }
+  button:hover { background:rgba(198,167,106,.16); }
+  button.ghost { border-color:var(--line); color:var(--muted); background:transparent; }
+  .hint { color:var(--muted); font-size:12px; }
+  pre { background:#0d0d0d; border:1px solid var(--line); border-radius:10px; padding:12px; white-space:pre-wrap; font-size:12.5px; max-height:320px; overflow:auto; }
+  .msg { margin-top:10px; font-size:12.5px; color:var(--gold); }
+  .err { color:#d98a80; }
+</style>
+</head>
+<body>
+  <h1>大肥鱼 · 记忆桥</h1>
+  <p class="sub">把一个对话窗口绑到某个记忆体：不再受原上下文牵制，只带这个记忆体最近的事件和十条对话。</p>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <strong style="font-weight:500">记忆库连接</strong>
+      <span class="hint" id="status">未连接</span>
+    </div>
+    <label class="f"><span>地址（默认 http://127.0.0.1:8790）</span>
+      <input id="baseUrl" placeholder="http://127.0.0.1:8790" />
+    </label>
+    <div class="row">
+      <button id="btnRefresh">刷新记忆体</button>
+      <button class="ghost" id="btnSave">保存绑定</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <label class="f"><span>这个窗口使用的记忆体</span>
+      <select id="spaceId"><option value="0">（未选择）</option></select>
+    </label>
+    <label class="f"><span>带最近多少条对话（默认 10）</span>
+      <input id="recentTurns" type="number" min="1" max="50" value="10" />
+    </label>
+    <div class="row">
+      <button id="btnPack">生成记忆骨架</button>
+      <button class="ghost" id="btnCopy">复制</button>
+    </div>
+    <pre id="out">还没有生成。</pre>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+let cfg = { baseUrl: 'http://127.0.0.1:8790', spaceId: 0, recentTurns: 10 }
+
+async function api(path, opt) {
+  const r = await fetch(path, opt)
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status))
+  return data
+}
+
+function msg(t, bad) {
+  const el = $('msg')
+  el.textContent = t
+  el.className = 'msg' + (bad ? ' err' : '')
+}
+
+async function loadConfig() {
+  try {
+    cfg = await api('/api/config')
+    $('baseUrl').value = cfg.baseUrl || ''
+    $('recentTurns').value = cfg.recentTurns || 10
+  } catch (e) { /* 首次打开没有配置 */ }
+}
+
+async function loadSpaces() {
+  try {
+    msg('正在连接记忆库…')
+    const data = await api('/api/spaces')
+    const sel = $('spaceId')
+    sel.innerHTML = '<option value="0">（未选择）</option>'
+    for (const s of data.spaces || []) {
+      const o = document.createElement('option')
+      o.value = s.id
+      o.textContent = `${s.name || ('记忆体 ' + s.id)} · ${s.total} 条对话`
+      sel.appendChild(o)
+    }
+    sel.value = String(cfg.spaceId || 0)
+    $('status').textContent = '已连接 ' + (data.baseUrl || '')
+    msg(`找到 ${(data.spaces || []).length} 个记忆体`)
+  } catch (e) {
+    $('status').textContent = '未连接'
+    msg('连接失败：' + e.message, true)
+  }
+}
+
+async function save() {
+  const body = {
+    baseUrl: $('baseUrl').value.trim() || 'http://127.0.0.1:8790',
+    spaceId: Number($('spaceId').value || 0),
+    recentTurns: Number($('recentTurns').value || 10),
+  }
+  try {
+    cfg = await api('/api/config', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    msg('已保存：这个窗口之后用「' + ($('spaceId').selectedOptions[0]?.textContent || '未选') + '」')
+  } catch (e) {
+    msg('保存失败：' + e.message, true)
+  }
+}
+
+async function pack() {
+  try {
+    $('out').textContent = '正在生成…'
+    const data = await api('/api/pack')
+    $('out').textContent = data.text || '（这个记忆体还没有整理好的事件）'
+  } catch (e) {
+    $('out').textContent = '生成失败：' + e.message
+  }
+}
+
+$('btnRefresh').onclick = loadSpaces
+$('btnSave').onclick = save
+$('btnPack').onclick = pack
+$('btnCopy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('out').textContent || '')
+    msg('已复制到剪贴板')
+  } catch {
+    msg('复制失败，手动选中吧', true)
+  }
+}
+
+loadConfig().then(loadSpaces)
+</script>
+</body>
+</html>
